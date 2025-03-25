@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storyboard Creator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #mainContainer {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .scene {
+            background: #e0e0e0;
+            padding: 10px;
+            border-radius: 5px;
+            position: relative;
+        }
+        .scene.dragging {
+            opacity: 0.5;
+        }
+        .scene-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .drag-handle {
+            width: 20px;
+            height: 20px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="gray"><path d="M11 18c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm-2-8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 4c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>') no-repeat center;
+            background-size: contain;
+            cursor: move;
+        }
+        .scene-title {
+            flex-grow: 1;
+            padding: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        .scene-action-button {
+            padding: 5px 10px;
+            font-size: 14px;
+            width: 150px;
+        }
+        .panels-container {
+            display: flex;
+            overflow-x: auto;
+            gap: 20px;
+            padding: 10px;
+        }
+        .storyboard-panel {
+            min-width: 300px;
+            background: white;
+            border: 2px dashed #ccc;
+            padding: 10px;
+            border-radius: 5px;
+            cursor: move;
+            position: relative;
+        }
+        .storyboard-panel.dragging {
+            opacity: 0.5;
+        }
+        .shot-number {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+        }
+        .image-drop {
+            width: 280px;
+            height: 200px;
+            background: #f9f9f9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 10px;
+            text-align: center;
+            color: #666;
+        }
+        .image-drop img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            resize: vertical;
+        }
+        #add-scene, #save-button, #load-button {
+            margin: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+        .delete-panel {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            width: 20px;
+            height: 20px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="red"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>') no-repeat center;
+            background-size: contain;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Storyboard Creator</h1>
+    <button id="add-scene">Add New Scene</button>
+    <button id="save-button">Save Storyboard</button>
+    <input type="file" id="load-input" accept=".json" style="display: none;">
+    <button id="load-button">Load Storyboard</button>
+    <div id="mainContainer">
+        <!-- Scenes will be added here -->
+    </div>
+
+    <script>
+        function addNewScene(addPanel = false) {
+            const scene = document.createElement('div');
+            scene.className = 'scene';
+
+            const sceneHeader = document.createElement('div');
+            sceneHeader.className = 'scene-header';
+
+            const dragHandle = document.createElement('div');
+            dragHandle.className = 'drag-handle';
+            dragHandle.draggable = true;
+
+            const sceneTitle = document.createElement('input');
+            sceneTitle.type = 'text';
+            sceneTitle.className = 'scene-title';
+            sceneTitle.placeholder = 'Scene Title';
+
+            const sceneActionButton = document.createElement('button');
+            sceneActionButton.className = 'scene-action-button';
+            sceneActionButton.textContent = 'Add New Panel';
+
+            sceneHeader.appendChild(dragHandle);
+            sceneHeader.appendChild(sceneTitle);
+            sceneHeader.appendChild(sceneActionButton);
+
+            const panelsContainer = document.createElement('div');
+            panelsContainer.className = 'panels-container';
+
+            scene.appendChild(sceneHeader);
+            scene.appendChild(panelsContainer);
+
+            document.getElementById('mainContainer').appendChild(scene);
+            if (addPanel) {
+                addNewPanelToContainer(panelsContainer);
+            }
+
+            dragHandle.addEventListener('dragstart', sceneDragStart);
+            scene.addEventListener('dragover', sceneDragOver);
+            scene.addEventListener('drop', sceneDrop);
+            scene.addEventListener('dragend', sceneDragEnd);
+
+            return scene;
+        }
+
+        function addNewPanelToContainer(container, imageSrc = '', notes = '') {
+            const panel = document.createElement('div');
+            panel.className = 'storyboard-panel';
+            panel.draggable = true;
+
+            const shotNumber = document.createElement('div');
+            shotNumber.className = 'shot-number';
+            panel.appendChild(shotNumber);
+
+            const dropZone = document.createElement('div');
+            dropZone.className = 'image-drop';
+            dropZone.addEventListener('drop', drop);
+            dropZone.addEventListener('dragover', allowDrop);
+
+            const deleteButton = document.createElement('div');
+            deleteButton.className = 'delete-panel';
+            deleteButton.addEventListener('click', () => {
+                panel.remove();
+                updateShotNumbers(container);
+            });
+
+            if (imageSrc && imageSrc !== 'null' && imageSrc !== '') {
+                const img = document.createElement('img');
+                img.src = imageSrc;
+                img.alt = 'Storyboard image';
+                img.draggable = false;
+                img.addEventListener('dragstart', function(event) {
+                    event.preventDefault();
+                });
+                dropZone.appendChild(img);
+            } else {
+                dropZone.textContent = 'Drop image here';
+            }
+
+            const textarea = document.createElement('textarea');
+            textarea.placeholder = 'Add notes here';
+            textarea.value = notes || '';
+
+            panel.appendChild(dropZone);
+            panel.appendChild(deleteButton);
+            panel.appendChild(textarea);
+
+            panel.addEventListener('dragstart', dragStart);
+            panel.addEventListener('dragover', dragOver);
+            panel.addEventListener('drop', dropPanel);
+
+            container.appendChild(panel);
+            updateShotNumbers(container);
+        }
+
+        function updateShotNumbers(container) {
+            const panels = container.querySelectorAll('.storyboard-panel');
+            panels.forEach((panel, index) => {
+                const shotNumber = panel.querySelector('.shot-number');
+                shotNumber.textContent = `Shot ${index + 1}`;
+            });
+        }
+
+        function allowDrop(ev) {
+            ev.preventDefault();
+        }
+
+        function drop(ev) {
+            ev.preventDefault();
+            const files = ev.dataTransfer.files;
+            if (files && files.length > 0) {
+                const file = files[0];
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const img = document.createElement('img');
+                        img.src = e.target.result;
+                        img.alt = 'Storyboard image';
+                        img.draggable = false;
+                        img.addEventListener('dragstart', function(event) {
+                            event.preventDefault();
+                        });
+                        const dropZone = ev.target.closest('.image-drop');
+                        if (dropZone) {
+                            while (dropZone.firstChild) {
+                                dropZone.removeChild(dropZone.firstChild);
+                            }
+                            dropZone.appendChild(img);
+                        }
+                        const container = dropZone.closest('.panels-container');
+                        cleanUpTextNodes(document.getElementById('mainContainer'));
+                        updateShotNumbers(container);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+        }
+
+        function cleanUpTextNodes(container) {
+            Array.from(container.childNodes).forEach(node => {
+                if (node.nodeType === Node.TEXT_NODE && node.textContent.trim() === 'null') {
+                    container.removeChild(node);
+                }
+            });
+        }
+
+        let draggedPanel = null;
+
+        function dragStart(ev) {
+            draggedPanel = ev.currentTarget;
+            setTimeout(() => {
+                draggedPanel.classList.add('dragging');
+            }, 0);
+        }
+
+        function dragOver(ev) {
+            ev.preventDefault();
+        }
+
+        function dropPanel(ev) {
+            ev.preventDefault();
+            const targetPanel = ev.target.closest('.storyboard-panel');
+            if (targetPanel && draggedPanel !== targetPanel && draggedPanel.parentNode === targetPanel.parentNode) {
+                const container = targetPanel.parentNode;
+                const panels = Array.from(container.children);
+                const fromIndex = panels.indexOf(draggedPanel);
+                const toIndex = panels.indexOf(targetPanel);
+                if (fromIndex < toIndex) {
+                    targetPanel.after(draggedPanel);
+                } else {
+                    targetPanel.before(draggedPanel);
+                }
+                updateShotNumbers(container);
+            }
+        }
+
+        document.addEventListener('dragend', (ev) => {
+            if (draggedPanel && ev.target.classList.contains('storyboard-panel')) {
+                draggedPanel.classList.remove('dragging');
+                draggedPanel = null;
+            }
+        });
+
+        let draggedScene = null;
+
+        function sceneDragStart(ev) {
+            draggedScene = ev.target.closest('.scene');
+            setTimeout(() => {
+                draggedScene.classList.add('dragging');
+            }, 0);
+        }
+
+        function sceneDragOver(ev) {
+            ev.preventDefault();
+        }
+
+        function sceneDrop(ev) {
+            ev.preventDefault();
+            const targetScene = ev.target.closest('.scene');
+            if (targetScene && draggedScene !== targetScene) {
+                const container = document.getElementById('mainContainer');
+                const scenes = Array.from(container.children);
+                const fromIndex = scenes.indexOf(draggedScene);
+                const toIndex = scenes.indexOf(targetScene);
+                if (fromIndex < toIndex) {
+                    targetScene.after(draggedScene);
+                } else {
+                    targetScene.before(draggedScene);
+                }
+            }
+        }
+
+        function sceneDragEnd() {
+            if (draggedScene) {
+                draggedScene.classList.remove('dragging');
+                draggedScene = null;
+            }
+        }
+
+        function saveToFile() {
+            const scenes = document.querySelectorAll('.scene');
+            const storyboardData = Array.from(scenes).map(scene => {
+                const title = scene.querySelector('.scene-title').value;
+                const panels = scene.querySelectorAll('.storyboard-panel');
+                const panelsData = Array.from(panels).map(panel => {
+                    const img = panel.querySelector('img');
+                    const notes = panel.querySelector('textarea').value;
+                    return {
+                        imageSrc: img ? img.src : '',
+                        notes: notes
+                    };
+                });
+                return { title, panels: panelsData };
+            });
+            const jsonData = JSON.stringify(storyboardData, null, 2);
+            const blob = new Blob([jsonData], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'storyboard.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function loadFromFile(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const storyboardData = JSON.parse(e.target.result);
+                        const mainContainer = document.getElementById('mainContainer');
+                        mainContainer.innerHTML = '';
+                        storyboardData.forEach(sceneData => {
+                            const scene = addNewScene(false);
+                            scene.querySelector('.scene-title').value = sceneData.title || '';
+                            const panelsContainer = scene.querySelector('.panels-container');
+                            sceneData.panels.forEach(panelData => {
+                                addNewPanelToContainer(panelsContainer, panelData.imageSrc || '', panelData.notes || '');
+                            });
+                        });
+                    } catch (error) {
+                        alert('Invalid file format. Please select a valid JSON file.');
+                    }
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        document.addEventListener('click', function(event) {
+            if (event.target.classList.contains('scene-action-button')) {
+                const scene = event.target.closest('.scene');
+                const panelsContainer = scene.querySelector('.panels-container');
+                addNewPanelToContainer(panelsContainer);
+            }
+        });
+
+        document.getElementById('add-scene').addEventListener('click', () => {
+            addNewScene(true);
+        });
+
+        document.getElementById('save-button').addEventListener('click', saveToFile);
+        document.getElementById('load-button').addEventListener('click', () => {
+            document.getElementById('load-input').click();
+        });
+        document.getElementById('load-input').addEventListener('change', loadFromFile);
+
+        addNewScene(true);
+    </script>
+</body>
+</html>
