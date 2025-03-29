@@ -94,7 +94,7 @@
             height: 100px;
             resize: vertical;
         }
-        #add-scene, #save-button, #load-button {
+        #add-scene, #save-button, #load-button, #export-pdf {
             margin: 20px;
             padding: 10px 20px;
             font-size: 16px;
@@ -110,6 +110,7 @@
             cursor: pointer;
         }
     </style>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
     <h1>Storyboard Creator</h1>
@@ -117,6 +118,7 @@
     <button id="save-button">Save Storyboard</button>
     <input type="file" id="load-input" accept=".json" style="display: none;">
     <button id="load-button">Load Storyboard</button>
+	<button id="export-pdf">Export to PDF</button>
     <div id="mainContainer">
         <!-- Scenes will be added here -->
     </div>
@@ -408,6 +410,102 @@
         document.getElementById('load-input').addEventListener('change', loadFromFile);
 
         addNewScene(true);
+		
+		function exportToPDF() {
+			const { jsPDF } = window.jspdf;
+			const doc = new jsPDF({ unit: 'mm' });
+
+			// Define page dimensions and layout
+			const pageWidth = 210;  // A4 width in mm
+			const pageHeight = 297; // A4 height in mm
+			const margin = 10;
+			const gap = 10;
+			const panelWidth = (pageWidth - 2 * margin - 2 * gap) / 3;
+			const panelHeight = (pageHeight - 2 * margin - 2 * gap - 20) / 3; // Adjusted for title space
+
+			// Get all scenes from the main container
+			const scenes = document.querySelectorAll('#mainContainer > .scene');
+
+			scenes.forEach((scene, sceneIndex) => {
+				const sceneTitle = scene.querySelector('.scene-title').value || `Scene ${sceneIndex + 1}`;
+				const panels = scene.querySelectorAll('.storyboard-panel');
+				let panelIndexOnPage = 0; // Tracks panels on the current page
+
+				// Add a new page for each scene (except the first one, which uses the initial page)
+				if (sceneIndex > 0) {
+					doc.addPage();
+				}
+
+				// Add scene title at the top of the page
+				doc.setFontSize(16);
+				doc.text(sceneTitle, margin, margin + 5);
+
+				// Loop through each panel in the scene
+				panels.forEach((panel, panelIndexInScene) => {
+					// Format shot number as "sceneNumber-shotNumber"
+					const shotNumber = `${sceneIndex + 1}-${panelIndexInScene + 1}`;
+
+					// Extract image and notes from the panel
+					const img = panel.querySelector('img');
+					const notes = panel.querySelector('textarea').value;
+
+					// Add a new page if we've filled the current one (9 panels)
+					if (panelIndexOnPage >= 9) {
+						doc.addPage();
+						// Add scene title again on the new page
+						doc.setFontSize(16);
+						doc.text(sceneTitle, margin, margin + 5);
+						panelIndexOnPage = 0;
+					}
+
+					// Calculate position in the 3x3 grid, accounting for title space
+					const rowOnPage = Math.floor(panelIndexOnPage / 3);
+					const colOnPage = panelIndexOnPage % 3;
+					const x = margin + colOnPage * (panelWidth + gap);
+					const y = margin + 20 + rowOnPage * (panelHeight + gap); // 20mm offset for title
+
+					// Add the shot number
+					doc.setFontSize(12);
+					doc.text(shotNumber, x, y + 5);
+
+					// Position image and notes
+					let imageY = y + 10;
+					let textY = imageY;
+
+					if (img) {
+						const imgData = img.src;
+						const naturalWidth = img.naturalWidth;
+						const naturalHeight = img.naturalHeight;
+						if (naturalWidth && naturalHeight) {
+							const aspectRatio = naturalWidth / naturalHeight;
+							let imageWidth = panelWidth;
+							let imageHeight = panelWidth / aspectRatio;
+							const maxImageHeight = panelHeight * 0.7;
+							if (imageHeight > maxImageHeight) {
+								imageHeight = maxImageHeight;
+								imageWidth = maxImageHeight * aspectRatio;
+							}
+							doc.addImage(imgData, x, imageY, imageWidth, imageHeight);
+							textY = imageY + imageHeight + 5;
+						}
+					} else {
+						textY = imageY;
+					}
+
+					// Add notes below the image or shot number
+					doc.setFontSize(8);
+					doc.text(notes, x, textY, { maxWidth: panelWidth });
+
+					panelIndexOnPage++;
+				});
+			});
+
+			// Save the PDF
+			doc.save('storyboard.pdf');
+		}
+
+		// Attach the function to the export button
+		document.getElementById('export-pdf').addEventListener('click', exportToPDF);
     </script>
 </body>
 </html>
